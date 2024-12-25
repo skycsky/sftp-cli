@@ -9,13 +9,12 @@ import (
 	"github.com/rclone/rclone/fs"
 	"github.com/rclone/rclone/fs/config"
 	"github.com/rclone/rclone/fs/config/configfile"
-	"github.com/rclone/rclone/fs/config/flags"
 	"github.com/rclone/rclone/fs/sync"
 	"github.com/urfave/cli/v2"
 )
 
 const (
-	rcloneConfigFile = "./app.conf" // 配置文件路径
+	rcloneConfigFile = "./rclone.conf" // 配置文件路径
 )
 
 func main() {
@@ -85,47 +84,33 @@ func initRclone() error {
 	config.SetConfigPath(rcloneConfigFile)
 
 	// 确保加载配置文件
-	flags.ConfigFile = rcloneConfigFile
-	if err := configfile.Install(); err != nil {
-		return fmt.Errorf("failed to load config file: %v", err)
-	}
+	configfile.Install() // 此处为无返回值函数，直接调用即可
 	return nil
 }
 
 func rcloneSync(src, dst string, operation string) error {
 	ctx := context.Background()
-	fsSrc, err := fs.NewFs(src)
+	fsSrc, err := fs.NewFs(ctx, src)
 	if err != nil {
 		return fmt.Errorf("failed to create source fs: %v", err)
 	}
 
-	fsDst, err := fs.NewFs(dst)
+	fsDst, err := fs.NewFs(ctx, dst)
 	if err != nil {
 		return fmt.Errorf("failed to create destination fs: %v", err)
 	}
 
-	var errorsList []string
-	callback := func(src, dst string, size int64, err error) {
-		if err != nil {
-			errorsList = append(errorsList, fmt.Sprintf("File: %s, Error: %v", src, err))
-		}
-	}
-
+	// 开始同步操作
 	if operation == "upload" {
-		err = sync.Sync(ctx, fsDst, fsSrc, false, callback)
+		err = sync.Sync(ctx, fsDst, fsSrc, false)
 	} else if operation == "download" {
-		err = sync.Sync(ctx, fsSrc, fsDst, false, callback)
+		err = sync.Sync(ctx, fsSrc, fsDst, false)
 	}
 
+	// 错误处理：如果出现错误，记录具体错误信息
 	if err != nil {
+		log.Printf("Sync operation failed for %s -> %s. Error: %v", src, dst, err)
 		return fmt.Errorf("sync operation failed: %v", err)
-	}
-
-	if len(errorsList) > 0 {
-		for _, errorMsg := range errorsList {
-			log.Printf("Upload Error: %s", errorMsg)
-		}
-		return fmt.Errorf("some files failed during %s", operation)
 	}
 
 	log.Printf("Successfully completed %s from %s to %s", operation, src, dst)
@@ -134,7 +119,7 @@ func rcloneSync(src, dst string, operation string) error {
 
 func rcloneList(remote string) error {
 	ctx := context.Background()
-	fsRemote, err := fs.NewFs(remote)
+	fsRemote, err := fs.NewFs(ctx, remote)
 	if err != nil {
 		return fmt.Errorf("failed to create remote fs: %v", err)
 	}
